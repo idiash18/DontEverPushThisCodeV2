@@ -24,26 +24,22 @@ jobs:
               with:
                 # TODO#1: Set fetch-depth to 0 so scanners can see all git history
                 fetch-depth: 0
-
             - name: Run TruffleHog
               uses: trufflesecurity/trufflehog@main
               continue-on-error: true
               with:
                 path: ./
-                # TODO#2: set base + HEAD refs
-                base: HEAD~1
-                head: HEAD
-                # TODO#3: add extra_args flag to report ONLY VERIFIED secrets
+                # ลบบรรทัด base และ head ทิ้งไปเลย
                 extra_args: --only-verified
 
-            # TODO#4: add Gitleaks step below.
+                  # TODO#4: add Gitleaks step below.
             - name: Run Gitleaks
               uses: gitleaks/gitleaks-action@v2
               continue-on-error: true
               env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-                GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
-                GITLEAKS_ENABLE_SUMMARY: true
+                      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                      GITLEAKS_ENABLE_UPLOAD_ARTIFACT: true
+                      GITLEAKS_ENABLE_SUMMARY: true
 
     # GATE#1a: SAST via SonarQube 
     sast-scan:
