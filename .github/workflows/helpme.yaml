@@ -14,11 +14,11 @@ permissions:
   # TODO#0a: add permission required for SARIF upload (github/codeql-action/upload-sarif)
   # TODO#0b: add permission so Gitleaks/Sonar can comment on PRs + issues
   # TODO#0c: add permission for OIDC token (id-token)
-  id-token: ???
-  issues: ???
-  pull-requests: ???
-  security-events: ???  # required to upload SARIF to GitHub Security tab
-  actions: ???
+  id-token: write
+  issues: write
+  pull-requests: write
+  security-events: write  # required to upload SARIF to GitHub Security tab
+  actions: write
 
 jobs:
     # GATE#0: Secret scanning (TruffleHog + Gitleaks)
@@ -45,8 +45,8 @@ jobs:
                 # TODO#3: add extra_args flag to report ONLY VERIFIED secrets (reduce noise)
                 # extra_args: ???
                 base: ${{ github.event.repository.default_branch }}
-                head: ???
-                extra_args: ???
+                head: HEAD
+                extra_args: --verified
 
             # Gitleaks scans code + history for regex patterns that look like secrets. It can be more accurate than TruffleHog, but may miss live creds that don't match known patterns.
             # TODO#4: add Gitleaks step below.
@@ -57,12 +57,12 @@ jobs:
             #   - enable SARIF artifact upload + job summary via env vars
             # Q: difference between TruffleHog (verified live creds) vs Gitleaks (regex patterns)?
             - name: Run Gitleaks
-              uses: ???
+              uses: gitleaks/gitleaks-action@v2
               continue-on-error: true
               env:
-                GITHUB_TOKEN: ???
-                GITLEAKS_ENABLE_UPLOAD_ARTIFACT: ???
-                GITLEAKS_ENABLE_SUMMARY: ???
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                GITLEAKS_ENABLE_UPLOAD_ARTIFACT:  true
+                GITLEAKS_ENABLE_SUMMARY: true
 
     # GATE#1a: SAST via SonarQube 
     sast-scan:
@@ -75,7 +75,7 @@ jobs:
               uses: actions/checkout@v4
               with:
                 # TODO#5: Sonar needs full history for blame/new-code detection. Set fetch-depth.
-                fetch-depth: ???
+                fetch-depth: 0
 
             # TODO#6: add SonarQube scan step.
             # Action: SonarSource/sonarqube-scan-action@v7.1.0
@@ -83,10 +83,10 @@ jobs:
             # continue-on-error: true (so pipeline keeps running BUT IT IS NOT A BEST PRACTICE — ideally we would fail here and fix SAST issues before moving on to later gates)
             # Q: where do findings show up? (NOT GitHub Security tab — why?)
             - name: SonarQube Scan
-              uses: ???
+              uses: SonarSource/sonarqube-scan-action@v7.1.0
               continue-on-error: true
               env:
-                  SONAR_TOKEN: ???
+                  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
     # GATE#1b: SAST via CodeQL (results in GitHub Security tab)
     codeql-scan:
@@ -97,7 +97,7 @@ jobs:
             matrix:
                 # TODO#7: set correct CodeQL language for this Next.js / React project 
                 #HINT: What language do we use to write React code? What about Next.js API routes?
-                language: [ '???' ]
+                language: [ 'javascript-typescript' ]
         steps:
             - name: Checkout code
               uses: actions/checkout@v4
@@ -109,7 +109,7 @@ jobs:
                 languages: ${{ matrix.language }}
                 # TODO#8: enable extended security + quality query suites
                 # queries: ???
-                queries: ???,???
+                queries: security-extended,security-and-quality
                 # RESOURCE — CodeQL query suites:
                 # https://docs.github.com/en/code-security/code-scanning/creating-an-advanced-setup-for-code-scanning/codeql-code-scanning-for-compiled-languages#codeql-query-suites
                 #
@@ -124,7 +124,7 @@ jobs:
             # Action: github/codeql-action/analyze@v3
             # Set category so matrix runs don't collide in Security tab.
             - name: Perform CodeQL Analysis
-              uses: ???
+              uses: github/codeql-action/analyze@v3
               with:
                 category: "/language:${{ matrix.language }}"
 
@@ -151,12 +151,12 @@ jobs:
                 project: 'DontEverPushThisCodeV2'
                 path: '.' # scan current directory (which should be the repo root after checkout)
                 # TODO#12: which format integrates with GitHub Security tab?
-                format: '???'
+                format: 'SARIF'
                 out: 'reports'
                 # TODO#13: set fail threshold — block on CVSS >= ?
                 # Hint: CVSS 7.0+ = HIGH
                 args: >
-                    --failOnCVSS ???
+                    --failOnCVSS 7
                     --enableRetired
 
             # TODO#14: upload Depcheck SARIF to GitHub Security tab
@@ -166,21 +166,21 @@ jobs:
             - name: Upload Depcheck SARIF to Security tab
               if: always() 
               #the above line meant to upload SARIF even if the Depcheck step fails (e.g. due to high CVSS findings), so that we can see results in Security tab and fix issues.
-              uses: ???
+              uses: github/codeql-action/upload-sarif@v3
               continue-on-error: true
               with:
-                  sarif_file: ???
-                  category: ???
+                  sarif_file: reports/dependency-check-report.sarif
+                  category: dependency-check
 
             # TODO#15: upload raw Depcheck report folder as artifact
             # Action: actions/upload-artifact@v4
             # name: depcheck-report, path: reports/
             - name: Upload Depcheck HTML report as artifact
               if: always() 
-              uses: ???
+              uses: actions/upload-artifact@v4
               with:
-                name: ???
-                ???: ???
+                name: depcheck-report
+                path: reports/
 
     # GATE#3: Container/Image scanning via Trivy (SARIF + artifact)
     image-scanning:
@@ -208,9 +208,20 @@ jobs:
                 # ignore-unfixed: ???
 
             # TODO#20: upload Trivy SARIF to Security tab
+            - name: Upload Trivy SARIF to Security tab
+              if: always()
+              uses: github/codeql-action/upload-sarif@v3
+              with:
+                sarif_file: 'trivy-results.sarif'
+                category: trivy
             # Action: github/codeql-action/upload-sarif@v3, category: trivy
 
             # TODO#21: upload trivy-results.sarif as workflow artifact
-
+            - name: Upload Trivy artifact
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: trivy-report
+                path: trivy-results.sarif
     # GATE#4: IaC scanning (Since there is no infrastructure cod here and it is out of scope for this class so we could skip it HELL YEAH!)
     # GATE#5: DAST (We have OWASP ZAP workshop here so we can skip this one too! YOHOOO!)

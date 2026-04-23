@@ -1,4 +1,4 @@
-FROM node:25-alpine
+FROM node:22-alpine
 COPY package*.json .
 COPY . .
 RUN npm install
