@@ -31,8 +31,8 @@ jobs:
               with:
                 path: ./
                 # TODO#2: set base + HEAD refs
-                base: ${{ github.event.repository.default_branch }}
-                head: ${{ github.sha }}
+                base: HEAD~1
+                head: HEAD
                 # TODO#3: add extra_args flag to report ONLY VERIFIED secrets
                 extra_args: --only-verified
 
